@@ -26,7 +26,7 @@ using namespace osgEarth::Drivers;
 #include <ogr_geometry.h>
 #include <ogr_feature.h>
 
-static QVector<attrib>  getGDALinfo_Raster(const QString &path)
+static QVector<attrib>  getGDALinfo_Raster(const QString& path)
 {
   QVector<attrib>  attribList;
   char             str[1000];
@@ -133,7 +133,7 @@ static QVector<attrib>  getGDALinfo_Raster(const QString &path)
 	return attribList;
 }
 
-static QVector<attrib>  getGDALinfo_Vector(const QString &path, QVector<feature> &featureTable)
+static QVector<attrib>  getGDALinfo_Vector(const QString& path, QVector<feature> &featureTable)
 {
   QVector<attrib>  attribList;
   char             str[1000];
@@ -211,7 +211,7 @@ void  AddGDALData::setupUi(QToolBar *toolBar, QMenu *menu)
   QAction *addLocalImgAction = new QAction(_mainWindow);
 	addLocalImgAction->setObjectName(QStringLiteral("addLocalImgAction"));
 	addLocalImgAction->setIcon(icon);
-	addLocalImgAction->setText(tr("Local image (GDAL)"));
+	addLocalImgAction->setText(tr("GDAL (local file)"));
 	addLocalImgAction->setToolTip(tr("Load local images with GDAL"));
 
 	menu = getOrAddMenu(IMAGE_LAYER);
@@ -222,7 +222,7 @@ void  AddGDALData::setupUi(QToolBar *toolBar, QMenu *menu)
   QAction *addLocalTerAction = new QAction(_mainWindow);
 	addLocalTerAction->setObjectName(QStringLiteral("addLocalTerAction"));
 	addLocalTerAction->setIcon(icon);
-	addLocalTerAction->setText(tr("Local terrain (GDAL)"));
+	addLocalTerAction->setText(tr("GDAL (local file)"));
 	addLocalTerAction->setToolTip(tr("Load local terrain files with GDAL"));
 
 	menu = getOrAddMenu(TERRAIN_LAYER);
@@ -233,7 +233,7 @@ void  AddGDALData::setupUi(QToolBar *toolBar, QMenu *menu)
   QAction *addLocalShpAction = new QAction(_mainWindow);
 	addLocalShpAction->setObjectName(QStringLiteral("addLocalShpAction"));
 	addLocalShpAction->setIcon(icon);
-	addLocalShpAction->setText(tr("Local shapefile (GDAL)"));
+	addLocalShpAction->setText(tr("GDAL (local file)"));
 	addLocalShpAction->setToolTip(tr("Load local shapefiles with GDAL"));
 
 	menu = getOrAddMenu(FEATURE_LAYER);
@@ -262,11 +262,10 @@ void  AddGDALData::addTerrain()
     GDALOptions  opt;
 		opt.url() = nodeName;
     osg::ref_ptr<osgEarth::ElevationLayer>  layer = new ElevationLayer(ElevationLayerOptions(nodeName, opt));
-		layer->getCacheSettings()->cachePolicy() = osgEarth::CachePolicy::NO_CACHE;
 
     QVector<attrib>  attribute = getGDALinfo_Raster(fileName);
 
-		addLayerToMap(layer, TERRAIN_LAYER, fileName, attribute);
+		addLayerToMap(fileName, layer, TERRAIN_LAYER, attribute);
 
 		progress += step;
     emit  loadingProgress(progress);
@@ -313,7 +312,7 @@ void  AddGDALData::addFeature()
     ModelLayerOptions *options = new ModelLayerOptions(nodeName, geomOptions);
     auto               layer   = new ModelLayer(*options);
 
-		addLayerToMap(fileName, layer);
+		addLayerToMap(fileName, layer, FEATURE_LAYER);
 		progress += step;
     emit  loadingProgress(progress);
 	}
@@ -346,7 +345,7 @@ void  AddGDALData::addImage()
 
     QVector<attrib>  attribute = getGDALinfo_Raster(fileName);
 
-		addLayerToMap(layer, IMAGE_LAYER, fileName, attribute);
+		addLayerToMap(fileName, layer, IMAGE_LAYER, attribute);
 
 		progress += step;
     emit  loadingProgress(progress);

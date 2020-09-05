@@ -3,10 +3,14 @@
 
 #include <QApplication>
 #include <QFile>
+#include <QSurfaceFormat>
 
 int  main(int argc, char *argv[])
 {
-// _putenv("OSG_ROOT=.");
+  // A trick to get higher fps than 30
+  QSurfaceFormat format = QSurfaceFormat::defaultFormat();
+  format.setSwapInterval(0);
+  QSurfaceFormat::setDefaultFormat(format);
 
   QApplication  app(argc, argv);
 
@@ -24,7 +28,7 @@ int  main(int argc, char *argv[])
   AtlasSplashScreen *splash = new AtlasSplashScreen(a);
   Atlas              w;
 	QObject::connect(&w, SIGNAL(sendTotalInitSteps(int)), splash, SLOT(setTotalInitSteps(int)));
-	QObject::connect(&w, SIGNAL(sendNowInitName(QString)), splash, SLOT(setNowInitName(QString)));
+	QObject::connect(&w, SIGNAL(sendNowInitName(const QString&)), splash, SLOT(setNowInitName(const QString&)));
 
 	splash->show();
   w.initAll();

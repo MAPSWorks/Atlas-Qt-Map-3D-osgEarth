@@ -259,7 +259,6 @@ void DataManager::initDataTree()
 
 	// Tree slots
 	connect(_nodeTree, SIGNAL(itemChanged(QTreeWidgetItem*, int)), _nodeTree, SLOT(switchDataSlot(QTreeWidgetItem*, int)));
-	connect(_nodeTree, SIGNAL(itemClicked(QTreeWidgetItem*, int)), this, SLOT(activateNode(QTreeWidgetItem*, int)));
 	connect(_nodeTree, SIGNAL(itemDoubleClicked(QTreeWidgetItem*, int)), this, SLOT(doubleClickTreeSlot(QTreeWidgetItem*, int)));
 	connect(_nodeTree, SIGNAL(customContextMenuRequested(const QPoint &)), this, SLOT(showDataTreeContextMenu(const QPoint &)));
 }
@@ -269,7 +268,7 @@ void DataManager::recordData(osg::Node* node, const QString& name, const QString
 	_nodeTree->addRecord(node, name, parent, hidden);
 }
 
-void DataManager::recordData(osgEarth::TerrainLayer* layer, const QString& name, const QString& parent, osgEarth::GeoExtent* extent, bool hidden)
+void DataManager::recordData(osgEarth::Layer* layer, const QString& name, const QString& parent, osgEarth::GeoExtent* extent, bool hidden)
 {
 	_nodeTree->addRecord(layer, name, parent, extent, hidden);
 }
@@ -284,9 +283,9 @@ void DataManager::switchData(const QString& nodeName, bool checked)
 	_nodeTree->switchRecord(nodeName, checked);
 }
 
-void DataManager::setMask(const QString& nodeName, int mask)
+void DataManager::setWindowMask(const QString& nodeName, int mask)
 {
-	_nodeTree->setMask(nodeName, mask);
+	_nodeTree->setWindowMask(nodeName, mask);
 }
 
 int DataManager::getMask(const QString& nodeName)
@@ -300,23 +299,16 @@ int DataManager::getMask(const QString& nodeName)
 
 void DataManager::registerDataRoots(osg::Group* root)
 {
-	osg::Group* overlayNode = findNodeInNode("World Overlay", root)->asGroup();
-    _nodeTree->_overlayNode = static_cast<osgSim::OverlayNode*>(overlayNode);
+	osg::Group* mapRoot = findNodeInNode("Map Root", root)->asGroup();
+  _nodeTree->_overlayNode = static_cast<osgSim::OverlayNode*>(findNodeInNode("Data Overlay", root));
 	for (unsigned i = 0; i < MAX_SUBVIEW; i++)
 	{
-		osg::Node* map = findNodeInNode(QString("Map%1").arg(i).toStdString(), overlayNode);
+		osg::Node* map = findNodeInNode(QString("Map%1").arg(i).toStdString(), mapRoot);
 		if (map)
 			_nodeTree->_mainMap[i] = dynamic_cast<osgEarth::MapNode*>(map)->getMap();
 		else
 			_nodeTree->_mainMap[i] = NULL;
 	}
-}
-
-void DataManager::setCenterNode(osg::Node* node)
-{
-	emit moveToNode(node, 0);
-
-	emit loadingDone();
 }
 
 const osgEarth::GeoExtent* DataManager::getExtent(const QString& name)
@@ -408,7 +400,7 @@ void DataManager::doubleClickTreeSlot(QTreeWidgetItem* item, int column)
 		return;
 
 	// Fly to and center on the target node based on previously calculated bounding
-	if (record->extent())
+	if (record->extent() && record->extent()->isValid())
 	{
 		// When the record is an OSGEarth layer
 		double xmin, xmax, ymin, ymax;
@@ -429,7 +421,7 @@ void DataManager::doubleClickTreeSlot(QTreeWidgetItem* item, int column)
 
 		emit moveToBounding(&bs, 0);
 	}
-	else if (record->bounding())
+	else if (record->bounding() && record->bounding()->valid())
 	{
 		// When the record is a plain OSG node
 		QString str = item->text(column);
@@ -438,28 +430,11 @@ void DataManager::doubleClickTreeSlot(QTreeWidgetItem* item, int column)
 		else
 			emit moveToNode(record->node(), str.contains("info ") ? 1000 : 0);
 	}
+  else
+  {
+    osg::notify(osg::WARN) << "Failed to fit view: no valid bounding";
+  }
 
-}
-
-void DataManager::activateNode(QTreeWidgetItem* item, int column)
-{
-	QString nodeName = item->text(column);
-
-	DataRecord* record = _nodeTree->getRecord(nodeName);
-
-	osg::Node* activatedNode = record->node();
-
-	if (record->isLayer())
-		activatedNode = NULL;
-
-	//if (activatedNode != NULL)
-	//{
-	//	setActivatedNode(activatedNode);
-	//	QString groupName = nodeName.split("_")[0];
-	//	emit requestDrawStyle(groupName);
-
-	//	tabWidget->setCurrentIndex(0);
-	//}
 }
 
 void DataManager::showDataTreeContextMenu(const QPoint &pos)
@@ -691,7 +666,7 @@ void DataManager::showDataTreeContextMenu(const QPoint &pos)
 //}
 
 //osgEarth::ModelLayer* DataManager::changeLayerStyle(
-//	std::string path, QString gemtype, FileType addType, std::string iconPath, float layerHeight)
+//	std::string path, const QString& gemtype, FileType addType, std::string iconPath, float layerHeight)
 //{
 //	//return _modellyermanager->changeLayerStyle(path, gemtype, addType, iconPath, layerHeight);
 //

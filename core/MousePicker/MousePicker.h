@@ -6,12 +6,21 @@
 
 #include <QObject>
 #include <osgGA/GUIEventHandler>
+#include <osgEarth/GeoData>
 
-namespace osgEarth
-{
-class MapNode;
-class Map;
-class SpatialReference;
+QT_BEGIN_NAMESPACE
+class QStatusBar;
+class QLabel;
+QT_END_NAMESPACE
+
+namespace osg {
+  class Group;
+}
+
+namespace osgEarth {
+	class MapNode;
+	class Map;
+	class SpatialReference;
 }
 
 namespace osgSim
@@ -63,6 +72,8 @@ public:
 	// Default operation for GUI Event Handler
   virtual void  defaultOperation(const osgGA::GUIEventAdapter &ea, osgGA::GUIActionAdapter &aa);
 
+    void setupUi(QStatusBar* statusBar);
+
 protected:
 	// Public main entrance for GUIEventHandler
   virtual bool  handle(const osgGA::GUIEventAdapter &ea, osgGA::GUIActionAdapter &aa);
@@ -75,11 +86,6 @@ private:
   virtual void  getPos(osgViewer::View *view, const osgGA::GUIEventAdapter &ea);
 
 signals:
-	// Signals to update coordinates in the status bar
-  void  updateText1(QString);
-  void  updateText2(QString);
-  void  updateText3(QString);
-
 	// Signal to update mouse type
   void  changeMouseType(unsigned type);
 
@@ -87,16 +93,19 @@ protected:
   bool  _activated;
 
 	// Infomation of the intersected point
-  static osg::Vec3                                       _currentLocalPos;
-  static osg::Vec3                                       _currentWorldPos;
-  static osgUtil::LineSegmentIntersector::Intersections  _intersections;
+  static osgEarth::GeoPoint _currentGeoPos;
+  static osg::Vec3d _currentLocalPos;
+  static osg::Vec3d _currentWorldPos;
+  static osgUtil::LineSegmentIntersector::Intersections _intersections;
+  static osgUtil::LineSegmentIntersector::Intersection _nearestIntesection;
 
-	// Global nodes defined and initialized in main program
+  // Global nodes defined and initialized in main program
   static osg::ref_ptr<osg::Group>                      _root;
+  static osg::ref_ptr<osg::Group>                      _mapRoot;
+  static osg::ref_ptr<osg::Group>             _dataRoot;
+  static osg::ref_ptr<osg::Group>  _subgraph;
+  static osg::ref_ptr<osg::Group>  _drawRoot;
   static osg::ref_ptr<osgSim::OverlayNode>             _overlayNode;
-  static osg::ref_ptr<osg::PositionAttitudeTransform>  _subgraph;
-  static osg::ref_ptr<osg::PositionAttitudeTransform>  _dataRoot;
-  static osg::ref_ptr<osg::PositionAttitudeTransform>  _drawRoot;
   static osg::ref_ptr<osgEarth::MapNode>               _mapNode[MAX_SUBVIEW];
   static osg::ref_ptr<osgEarth::Map>                   _mainMap[MAX_SUBVIEW];
 
@@ -109,5 +118,8 @@ protected:
   static const char                                     *_globalWKT;
 
 private:
-  static bool  _isValid;
+  static bool _isValid;
+
+  static QLabel *_labelWorldCoord;
+  static QLabel *_labelGeoCoord;
 };

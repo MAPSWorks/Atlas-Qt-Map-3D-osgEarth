@@ -1,10 +1,16 @@
 ﻿#pragma once
 #include <QtPlugin>
-#include <PluginInterface/PluginInterface.h>
+#include <EarthDataInterface/EarthDataInterface.h>
 
 namespace osg {
 	class Node;
 	class PositionAttitudeTransform;
+}
+
+namespace osgEarth {
+  namespace Annotation {
+    class ModelNode;
+  }
 }
 
 QT_BEGIN_NAMESPACE
@@ -13,11 +19,11 @@ class QAction;
 class QMenu;
 QT_END_NAMESPACE
 
-class AddModel : public PluginInterface
+class AddModel : public EarthDataInterface
 {
-	Q_OBJECT
-	Q_PLUGIN_METADATA(IID "io.tqjxlm.Atlas.PluginInterface" FILE "AddModel.json")
-	Q_INTERFACES(PluginInterface)
+  Q_OBJECT
+  Q_PLUGIN_METADATA(IID "io.tqjxlm.Atlas.PluginInterface" FILE "AddModel.json")
+  Q_INTERFACES(PluginInterface)
 
 public:
 	AddModel();
@@ -28,22 +34,14 @@ public:
 	virtual void onMouseMove();
 	virtual void finish();
 	virtual bool loadModel(std::string filePath);
-	virtual void showNewModel();
 	virtual void setupUi(QToolBar* toolBar, QMenu* menu);
 
 public slots:
-	void addModelFromDB(QString modelName,QString modelFilePath,osg::Vec3 pos,osg::Vec3 norl);
 	virtual void toggle(bool checked = true) override;
 
 protected:
-	virtual void recordCurrent();
-
-protected:
-	osg::ref_ptr<osg::Node> _modelFile;
+  osg::ref_ptr<osg::PositionAttitudeTransform> _modelNode;
 	QString _filepath;
-	osg::ref_ptr<osg::PositionAttitudeTransform> _pat;
-	QString _modelUniqID;
-	QString _modelName;
 
 	QAction* _modelAction1;
 	QAction* _modelAction2;

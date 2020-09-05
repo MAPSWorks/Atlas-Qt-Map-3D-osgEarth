@@ -9,12 +9,12 @@ using namespace std;
 #include <QLabel>
 #include <QMessageBox>
 #include <QDateTime>
+#include <QProcess>
 #include <QTreeWidgetItem>
 
 #include <osg/Notify>
 #include <osg/ShapeDrawable>
 #include <osg/PositionAttitudeTransform>
-
 #include <osg/BlendColor>
 #include <osg/BlendFunc>
 #include <osg/TexGen>
@@ -22,8 +22,14 @@ using namespace std;
 
 #include <osgSim/OverlayNode>
 #include <osgDB/FileUtils>
+
 #include <osgEarth/Map>
 #include <osgEarth/MapNode>
+#include <osgEarth/Registry>
+#include <osgEarthUtil/EarthManipulator>
+#include <osgEarthUtil/AutoClipPlaneHandler>
+#include <osgEarthUtil/LogarithmicDepthBuffer>
+#include <osgEarthUtil/ExampleResources>
 
 #include <gdal_priv.h>
 
@@ -33,20 +39,20 @@ using namespace std;
 #include <SettingsManager/SettingsManager.h>
 #include <PluginManager/PluginManager.h>
 #include <MapController/MapController.h>
-#include "ui_AtlasMainWindow.h"
+#include <ui_AtlasMainWindow.h>
 
 Atlas::Atlas(QWidget *parent, Qt::WindowFlags flags):
-  AtlasMainWindow(parent, flags)
+	AtlasMainWindow(parent, flags)
 {
-  // Some global environment settings
-  QCoreApplication::setOrganizationName("Atlas");
-  QCoreApplication::setApplicationName("Atlas");
+	// Some global environment settings
+	QCoreApplication::setOrganizationName("Atlas");
+	QCoreApplication::setApplicationName("Atlas");
 
-  GDALAllRegister();
-  CPLSetConfigOption("GDAL_DATA", ".\\resources\\GDAL_data");
+	GDALAllRegister();
+	CPLSetConfigOption("GDAL_DATA", ".\\resources\\GDAL_data");
 
-  osg::DisplaySettings::instance()->setNumOfHttpDatabaseThreadsHint(4);
-  osg::DisplaySettings::instance()->setNumOfDatabaseThreadsHint(2);
+	osg::DisplaySettings::instance()->setNumOfHttpDatabaseThreadsHint(8);
+	osg::DisplaySettings::instance()->setNumOfDatabaseThreadsHint(2);
 }
 
 Atlas::~Atlas()
@@ -55,45 +61,47 @@ Atlas::~Atlas()
 	delete _dataManager;
 	delete _settingsManager;
 
+	osg::setNotifyLevel(osg::FATAL);
+	osg::setNotifyHandler(nullptr);
+	osgEarth::setNotifyHandler(nullptr);
+
 	cout << "Program closed: " << QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss").toStdString().c_str() << endl;
 	_log->close();
 	delete _log;
-
-	osg::setNotifyLevel(osg::FATAL);
 }
 
 void  Atlas::initAll()
 {
-  collectInitInfo();
+	collectInitInfo();
 
-  emit  sendNowInitName(tr("Initializing log"));
+	emit  sendNowInitName(tr("Initializing log"));
 	initLog();
 
-  emit  sendNowInitName(tr("Initializing UI"));
+	emit  sendNowInitName(tr("Initializing UI"));
 	setupUi();
 
 	initCore();
 
-  initDataStructure();
+	initDataStructure();
 
-  emit  sendNowInitName(tr("Initializing camera"));
+	emit  sendNowInitName(tr("Initializing camera"));
 	resetCamera();
 
 	initPlugins();
 
-  emit  sendNowInitName(tr("Stylizing UI"));
+	emit  sendNowInitName(tr("Stylizing UI"));
 	initUiStyles();
 }
 
 void  Atlas::initCore()
 {
-  emit  sendNowInitName(tr("Initializing DataManager"));
+	emit  sendNowInitName(tr("Initializing DataManager"));
 
-  _root = new osg::Group;
+	_root = new osg::Group;
 	_root->setName("Root");
 
-	_settingsManager = new SettingsManager();
-  _settingsManager->setupUi(_ui->projectMenu);
+	_settingsManager = new SettingsManager(this);
+	_settingsManager->setupUi(_ui->projectMenu);
 
 	_dataManager = new DataManager(_settingsManager, this);
 
@@ -101,16 +109,20 @@ void  Atlas::initCore()
 	connect(_dataManager, &DataManager::loadingDone, this, &AtlasMainWindow::loadingDone);
 	connect(_dataManager, &DataManager::resetCamera, this, &Atlas::resetCamera);
 
-  emit  sendNowInitName(tr("Initializing viewer"));
+	emit  sendNowInitName(tr("Initializing viewer"));
 	_mainViewerWidget = new ViewerWidget(_root, 0, 0, 1280, 1024, osgViewer::ViewerBase::SingleThreaded);
-	_mainViewerWidget->getMainView()->getCamera()->setCullMask(SHOW_IN_WINDOW_1 | SHOW_IN_NO_WINDOW);
-  emit  sendNowInitName(tr("Initializing viewer"));
-  setCentralWidget(_mainViewerWidget);
+	_mainViewerWidget->getMainView()->getCamera()->setCullMask(SHOW_IN_WINDOW_1);
+	emit  sendNowInitName(tr("Initializing viewer"));
+	setCentralWidget(_mainViewerWidget);
+
+	// thread-safe initialization of the OSG wrapper manager. Calling this here
+	// prevents the "unsupported wrapper" messages from OSG
+	osgDB::Registry::instance()->getObjectWrapperManager()->findWrapper("osg::Image");
 
 	connect(_dataManager, SIGNAL(startRendering()), _mainViewerWidget, SLOT(startRendering()));
 	connect(_dataManager, SIGNAL(stopRendering()), _mainViewerWidget, SLOT(stopRendering()));
 
-  _pluginManager = new PluginManager(this, _dataManager, _mainViewerWidget);
+	_pluginManager = new PluginManager(this, _dataManager, _mainViewerWidget);
 	_pluginManager->registerPluginGroup("Data", _ui->dataToolBar, _ui->dataMenu);
 	_pluginManager->registerPluginGroup("Measure", _ui->measToolBar, _ui->measMenu);
 	_pluginManager->registerPluginGroup("Draw", _ui->drawToolBar, _ui->drawMenu);
@@ -118,94 +130,158 @@ void  Atlas::initCore()
 	_pluginManager->registerPluginGroup("Analysis", _ui->analysisToolBar, _ui->analysisMenu);
 	_pluginManager->registerPluginGroup("Edit", _ui->editToolBar, _ui->editMenu);
 
-  connect(_dataManager, &DataManager::requestContextMenu, _pluginManager, &PluginManager::loadContextMenu);
-  connect(_pluginManager, &PluginManager::sendNowInitName, this, &Atlas::sendNowInitName);
+	connect(_dataManager, &DataManager::requestContextMenu, _pluginManager, &PluginManager::loadContextMenu);
+	connect(_pluginManager, &PluginManager::sendNowInitName, this, &Atlas::sendNowInitName);
 }
 
 void  Atlas::initPlugins()
 {
-  // MousePicker is the shared core of all plugins
-  _mousePicker = new MousePicker();
-  _mousePicker->registerData(this, _dataManager, _mainViewerWidget, _root, _settingsManager->getGlobalSRS());
-  _mousePicker->registerSetting(_settingsManager);
-  _mainViewerWidget->getMainView()->addEventHandler(_mousePicker);
-  connect(_mousePicker, SIGNAL(updateText1(QString)), _labelLocalCoord, SLOT(setText(QString)));
-  connect(_mousePicker, SIGNAL(updateText2(QString)), _labelWorldCoord, SLOT(setText(QString)));
-  connect(_mousePicker, SIGNAL(updateText3(QString)), _labelGeoCoord, SLOT(setText(QString)));
+	// MousePicker is the shared core of all plugins
+	_mousePicker = new MousePicker();
+	_mousePicker->registerData(this, _dataManager, _mainViewerWidget, _root, _settingsManager->getGlobalSRS());
+	_mousePicker->registerSetting(_settingsManager);
+	_mousePicker->setupUi(statusBar());
+	_mainViewerWidget->getMainView()->addEventHandler(_mousePicker);
 
 	_pluginManager->loadPlugins();
 }
 
 void  Atlas::initDataStructure()
 {
-  // Init data root to contain user data
-  // It is different from draw root in that data root is intersectable and projectable
-  _dataRoot = new osg::PositionAttitudeTransform;
-  _dataRoot->setName("Data Root");
+	_mapRoot = new osg::Group;
+	_mapRoot->setName("Map Root");
+
+	_drawRoot = new osg::Group;
+	_drawRoot->setName("Draw Root");
+	// Draw root should not be intersected
+	_drawRoot->setNodeMask(0xffffffff & (~INTERSECT_IGNORE));
+
+	_dataRoot = new osg::Group;
+	_dataRoot->setName("Data Root");
 
 	// Init osgEarth node using the predefined .earth file
 	for (int i = 0; i < MAX_SUBVIEW; i++)
 	{
-    osg::Node *baseMap = osgDB::readNodeFile("resources/earth_files/base.earth");
+		QString  mode = _settingsManager->getOrAddSetting("Base mode", "projected").toString();
+		QString  baseMapPath;
+
+		if (mode == "projected")
+		{
+			baseMapPath = QStringLiteral("resources/earth_files/projected.earth");
+		}
+		else if (mode == "geocentric")
+		{
+			baseMapPath = QStringLiteral("resources/earth_files/geocentric.earth");
+		}
+		else
+		{
+			QMessageBox::warning(nullptr, "Warning", "Base map settings corrupted, reset to projected");
+			_settingsManager->setOrAddSetting("Base mode", "projected");
+			baseMapPath = QStringLiteral("resources/earth_files/projected.earth");
+		}
+
+		osg::ref_ptr<osgDB::Options>  myReadOptions = osgEarth::Registry::cloneOrCreateOptions(0);
+		osgEarth::Config              c;
+		c.add("elevation_smoothing", false);
+		osgEarth::TerrainOptions  to(c);
+		osgEarth::MapNodeOptions  defMNO;
+		defMNO.setTerrainOptions(to);
+
+		myReadOptions->setPluginStringData("osgEarth.defaultOptions", defMNO.getConfig().toJSON());
+
+		osg::Node *baseMap = osgDB::readNodeFile(baseMapPath.toStdString(), myReadOptions);
 		_mapNode[i] = osgEarth::MapNode::get(baseMap);
 		_mapNode[i]->setName(QString("Map%1").arg(i).toStdString());
-		_mapNode[i]->setNodeMask(SHOW_IN_WINDOW_1 << i);
+		_mapNode[i]->setNodeMask((SHOW_IN_WINDOW_1 << i) | SHOW_IN_NO_WINDOW);
 		_mapNode[i]->getOrCreateStateSet()->setRenderingHint(osg::StateSet::TRANSPARENT_BIN);
-
 		_mainMap[i] = _mapNode[i]->getMap();
-    _dataRoot->addChild(_mapNode[i]);
-  }
+
+		_mapRoot->addChild(_mapNode[i]);
+	}
 
 	_settingsManager->setGlobalSRS(_mainMap[0]->getSRS());
 
-  // Init overlayNode with overlayerSubgraph
-  // Everything in overlaySubgraph will be projected to its children
-  _overlayNode = new osgSim::OverlayNode(osgSim::OverlayNode::OBJECT_DEPENDENT_WITH_ORTHOGRAPHIC_OVERLAY);
-  _overlayNode->setName("World Overlay");
-  _overlayNode->getOrCreateStateSet()->setAttributeAndModes(
-    new osg::BlendFunc(osg::BlendFunc::SRC_ALPHA, osg::BlendFunc::ONE_MINUS_SRC_ALPHA));
+	// Init overlayNode with overlayerSubgraph
+	// Everything in overlaySubgraph will be projected to its children
+	_dataOverlay = new osgSim::OverlayNode(osgSim::OverlayNode::OBJECT_DEPENDENT_WITH_ORTHOGRAPHIC_OVERLAY);
+	_dataOverlay->setName("Data Overlay");
+	_dataOverlay->getOrCreateStateSet()->setAttributeAndModes(
+		new osg::BlendFunc(osg::BlendFunc::SRC_ALPHA, osg::BlendFunc::ONE_MINUS_SRC_ALPHA));
+	_dataOverlay->setOverlayBaseHeight(-1);
+	_dataOverlay->setOverlayTextureSizeHint(2048);
+	_dataOverlay->setOverlayTextureUnit(3);
 
-  _overlaySubgraph = new osg::PositionAttitudeTransform;
-  _overlayNode->setOverlaySubgraph(_overlaySubgraph);
-  _overlayNode->addChild(_dataRoot);
+	_overlaySubgraph = new osg::Group;
+	_dataOverlay->setOverlaySubgraph(_overlaySubgraph);
+	_dataOverlay->addChild(_dataRoot);
 
-	// Root for all drawings
-	_drawRoot = new osg::PositionAttitudeTransform;
-	_drawRoot->setName("Draw Root");
+	_root->addChild(_dataOverlay);
+	_root->addChild(_drawRoot);
+	_root->addChild(_mapRoot);
 
-  _root->addChild(_overlayNode);
-  _root->addChild(_drawRoot);
-
-  _dataManager->registerDataRoots(_root);
+	_dataManager->registerDataRoots(_root);
 }
 
 void  Atlas::resetCamera()
 {
-  MapController *manipulator = _mainViewerWidget->getManipulator();
+	if (_mainMap[0]->isGeocentric())
+	{
+		osg::ref_ptr<osgEarth::Util::EarthManipulator>  manipulator =
+			dynamic_cast<osgEarth::Util::EarthManipulator *>(_mainViewerWidget->getMainView()->getCameraManipulator());
 
-  if (manipulator == NULL)
-  {
-    // Init a manipulator if not inited yet
-    manipulator = new MapController(_dataRoot);
-    _mainViewerWidget->getMainView()->setCameraManipulator(manipulator);
-    manipulator->setAutoComputeHomePosition(false);
+		if (!manipulator.valid())
+		{
+			manipulator = new osgEarth::Util::EarthManipulator;
+			_mainViewerWidget->getMainView()->setCameraManipulator(manipulator);
+		}
+		else
+		{
+			manipulator->home(0);
+		}
 
-    manipulator->setCenterIndicator(_mainViewerWidget->createCameraIndicator());
-  }
+		auto  settings = manipulator->getSettings();
+		settings->setSingleAxisRotation(true);
+		settings->setMinMaxDistance(10000.0, settings->getMaxDistance());
+		settings->setMaxOffset(5000.0, 5000.0);
+		settings->setMinMaxPitch(-90, 90);
+		settings->setTerrainAvoidanceEnabled(true);
+		settings->setThrowingEnabled(false);
+	}
+	else
+	{
+		MapController *manipulator = dynamic_cast<MapController *>(_mainViewerWidget->getMainView()->getCameraManipulator());
 
-	_mainViewerWidget->resetCamera(_mapNode[0]);
+		if (!manipulator)
+		{
+			// Init a manipulator if not inited yet
+			manipulator = new MapController(_dataRoot, _mapRoot, _mainMap[0]->getSRS());
+			manipulator->setAutoComputeHomePosition(false);
 
-  connect(_dataManager, SIGNAL(moveToNode(const osg::Node *,double)),
-          manipulator, SLOT(fitViewOnNode(const osg::Node *,double)),
-          Qt::UniqueConnection);
-  connect(_dataManager, SIGNAL(moveToBounding(const osg::BoundingSphere *,double)),
-          manipulator, SLOT(fitViewOnBounding(const osg::BoundingSphere *,double)),
-          Qt::UniqueConnection);
+			if (_settingsManager->getOrAddSetting("Camera indicator", false).toBool())
+			{
+				manipulator->setCenterIndicator(_mainViewerWidget->createCameraIndicator());
+			}
+
+			// Nearfar mode and ratio affect scene clipping
+			auto  camera = _mainViewerWidget->getMainView()->getCamera();
+			camera->setComputeNearFarMode(osg::Camera::COMPUTE_NEAR_FAR_USING_BOUNDING_VOLUMES);
+
+			connect(_dataManager, &DataManager::moveToNode,
+			        manipulator, &MapController::fitViewOnNode);
+			connect(_dataManager, &DataManager::moveToBounding,
+			        manipulator, &MapController::fitViewOnBounding);
+
+			_mainViewerWidget->getMainView()->setCameraManipulator(manipulator);
+			manipulator->registerWithView(_mainViewerWidget->getMainView(), 0);
+		}
+
+		manipulator->fitViewOnNode(_mapNode[0]);
+	}
 }
 
 void  qtLogToFile(QtMsgType type, const QMessageLogContext &context, const QString &msg)
 {
-  const string  logTypes[] = { "Debug", "Warning", "Critical", "Fatal", "Info" };
+	const string  logTypes[] = { "Debug", "Warning", "Critical", "Fatal", "Info" };
 
 	cout << "[Qt]    [" << logTypes[type] << "]    " << msg.toLocal8Bit().constData();
 #ifndef NDEBUG
@@ -216,7 +292,7 @@ void  qtLogToFile(QtMsgType type, const QMessageLogContext &context, const QStri
 
 class LogFileHandler: public osg::NotifyHandler
 {
-  const std::string  severityTag[osg::DEBUG_FP + 1] = {
+	const std::string  severityTag[osg::DEBUG_FP + 1] = {
 		"ALWAYS",
 		"FATAL",
 		"WARN",
@@ -227,12 +303,13 @@ class LogFileHandler: public osg::NotifyHandler
 	};
 
 public:
-  LogFileHandler(std::ofstream *outStream):
-    _log(outStream)
+
+	LogFileHandler(std::ofstream *outStream):
+		_log(outStream)
 	{
 	}
 
-  virtual void  notify(osg::NotifySeverity severity, const char *msg)
+	virtual void  notify(osg::NotifySeverity severity, const char *msg)
 	{
 		if (_log)
 		{
@@ -246,7 +323,7 @@ public:
 	}
 
 protected:
-  std::ofstream *_log = NULL;
+	std::ofstream *_log = NULL;
 };
 
 void  Atlas::initLog()
@@ -258,25 +335,25 @@ void  Atlas::initLog()
 	const char *appData = "/tmp";
 #endif
 
-  std::string  logDir = QString("%1/%2/%3")
-                        .arg(appData)
-                        .arg(QApplication::organizationName())
-                        .arg(QApplication::applicationName())
-                        .toStdString();
+	std::string  logDir = QString("%1/%2/%3")
+	                      .arg(appData)
+	                      .arg(QApplication::organizationName())
+	                      .arg(QApplication::applicationName())
+	                      .toStdString();
 
 	if (!osgDB::fileExists(logDir))
-  {
-    osgDB::makeDirectory(logDir);
-  }
+	{
+		osgDB::makeDirectory(logDir);
+	}
 
-  std::string  logPath = logDir + "/AtlasLog.txt";
+	std::string  logPath = logDir + "/AtlasLog.txt";
 	_log = NULL;
 	_log = new std::ofstream(logPath.c_str());
 
 	if (!_log)
-  {
-    return;
-  }
+	{
+		return;
+	}
 
 	// Redirect std iostream
 	std::cout.rdbuf(_log->rdbuf());
@@ -286,23 +363,8 @@ void  Atlas::initLog()
 	qInstallMessageHandler(qtLogToFile);
 
 	// Redirect OSGEarth
-	if (getenv("OSGEARTH_PACKAGE_LOGGING") != 0)
-	{
-    std::string  level(getenv("OSGEARTH_PACKAGE_LOGGING"));
-
-		if (level == "INFO")
-    {
-      osgEarth::setNotifyLevel(osg::INFO);
-    }
-    else if (level == "DEBUG")
-    {
-      osgEarth::setNotifyLevel(osg::DEBUG_INFO);
-    }
-  }
-	else
-	{
-		osgEarth::setNotifyLevel(osg::INFO);
-	}
+	osgEarth::setNotifyLevel(osg::INFO);
+	osgEarth::setNotifyHandler(new LogFileHandler(_log));
 
 	// Redirect OSG
 	osg::setNotifyLevel(osg::NOTICE);
@@ -313,35 +375,35 @@ void  Atlas::initLog()
 
 void  Atlas::setupUi()
 {
-  AtlasMainWindow::setupUi();
-  connect(_ui->actionAbout, SIGNAL(triggered()), this, SLOT(about()));
-  connect(_ui->actionExit, SIGNAL(triggered()), this, SLOT(close()));
+	AtlasMainWindow::setupUi();
+	connect(_ui->actionAbout, SIGNAL(triggered()), this, SLOT(about()));
+	connect(_ui->actionExit, SIGNAL(triggered()), this, SLOT(close()));
 }
 
 void  Atlas::collectInitInfo()
 {
-  // TODO: find a better way to collect initialization info
-  int   initSteps = 7;
-  QDir  pluginsDir(qApp->applicationDirPath());
+	// TODO: find a better way to collect initialization info
+	int   initSteps = 7;
+	QDir  pluginsDir(qApp->applicationDirPath());
 
-  pluginsDir.cd("plugins");
+	pluginsDir.cd("plugins");
 
-  // Parsing plugin dependencies
-  foreach(QString fileName, pluginsDir.entryList(QDir::Files))
-  {
-    if (fileName.split('.').back() != "dll")
-    {
-      continue;
-    }
+	// Parsing plugin dependencies
+	foreach(const QString &fileName, pluginsDir.entryList(QDir::Files))
+	{
+		if (fileName.split('.').back() != "dll")
+		{
+			continue;
+		}
 
-    initSteps++;
-  }
-  emit  sendTotalInitSteps(initSteps);
+		initSteps++;
+	}
+	emit  sendTotalInitSteps(initSteps);
 }
 
 void  Atlas::about()
 {
-  QString  versionInfo(tr("Atlas v0.0.1 by tqjxlm"));
+	QString  versionInfo(tr("Atlas v0.0.1 by tqjxlm"));
 
 	QMessageBox::information(this, tr("version"), versionInfo);
 }

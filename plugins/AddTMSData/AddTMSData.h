@@ -16,13 +16,11 @@ class AddTMSData: public EarthDataInterface
 
 public:
 	AddTMSData();
-
 	~AddTMSData();
 
   virtual void  setupUi(QToolBar *toolBar, QMenu *menu) override;
 
 public slots:
-  void          addImage();
-
-  void          addTerrain();
+	void addImage();
+  void addTerrain();
 };

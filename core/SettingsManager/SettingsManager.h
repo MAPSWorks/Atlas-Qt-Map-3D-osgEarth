@@ -23,9 +23,10 @@ class SETTINGSMANAGER_EXPORT SettingsManager : public QObject
 	Q_OBJECT
 
 public:
-	SettingsManager();
+	SettingsManager(QObject* parent = nullptr);
 	~SettingsManager();
 
+    void setOrAddSetting(const QString& key, const QVariant& value);
     QVariant getOrAddSetting(const QString& key, const QVariant& defaultValue);
 
     void setupUi(QMenu* menu);

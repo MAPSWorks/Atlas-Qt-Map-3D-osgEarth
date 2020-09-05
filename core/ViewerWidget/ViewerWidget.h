@@ -15,8 +15,6 @@ namespace osg {
 	class PositionAttitudeTransform;
 }
 
-class MapController;
-
 #include <QWidget>
 #include <QTimer>
 #include <QMap>
@@ -42,12 +40,6 @@ public:
 	 // Get the main graphics widget of the viewer, by default the viewer at position (0, 0)
 	 osgQt::GraphicsWindowQt* getMainContext();
 
-	 // Get camera manipulator of the main view
-	 MapController* getManipulator();
-
-	 // Reset camera manipulator to the default position
-	 void resetCamera(osg::ref_ptr<osg::Node> centerNode);
-
 	// Add a widget to the viewer layout at specified position
 	void setWidgetInLayout(QWidget* widget, int row, int column, bool visible = true);
 
@@ -61,7 +53,7 @@ public:
 		int x, int y, int w, int h, const std::string& name = "", bool shareMainContext = false, bool windowDecoration = false);	
 
 	// Create a legend that's rendered above the whole view
-	static osg::ref_ptr<osg::Camera> createLegendHud(QString titleString, QVector<osg::Vec4> colorVec, QVector<QString> txtVec);
+	static osg::ref_ptr<osg::Camera> createLegendHud(const QString& titleString, QVector<osg::Vec4> colorVec, QVector<QString> txtVec);
 
 	// Viewer paint event, it is called automatically every UI update
 	virtual void paintEvent(QPaintEvent* event) override;
@@ -83,7 +75,6 @@ protected:
 	QWidget* _mainWidget;
 	QMap<osgViewer::View*, QWidget*> _widgets;
 	osgQt::GraphicsWindowQt* _mainContext;
-	osg::ref_ptr<MapController> _mainManipulator;
 	osgViewer::View* _mainView;
 	QTimer _timer;
 	QGridLayout* _grid;

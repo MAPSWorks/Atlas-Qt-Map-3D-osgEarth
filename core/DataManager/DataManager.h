@@ -24,7 +24,7 @@ namespace osgSim {
 namespace osgEarth {
 	class MapNode;
 	class ModelLayer;
-	class TerrainLayer;
+	class Layer;
 	class SpatialReference;
 	class GeoExtent;
 	class Map;
@@ -61,10 +61,9 @@ public:
 
 	// Settings and registration
 	void registerDataRoots(osg::Group* root);
-	void setActivatedNode(osg::Node* node);
 
 	// Node visibility management
-	void setMask(const QString& nodeName, int mask);
+	void setWindowMask(const QString& nodeName, int mask);
 	int getMask(const QString& nodeName);
 
 	// Getters
@@ -79,7 +78,7 @@ public slots:
 	// Data management
 	void newProject();
 	void recordData(osg::Node* node, const QString& name, const QString& parent, bool hidden = false);
-	void recordData(osgEarth::TerrainLayer* layer, const QString& name, const QString& parent, osgEarth::GeoExtent* = NULL, bool hidden = false);
+	void recordData(osgEarth::Layer* layer, const QString& name, const QString& parent, osgEarth::GeoExtent* = NULL, bool hidden = false);
 	void removeData(const QString& nodeName);
 	void switchData(const QString& nodeName, bool checked);
 
@@ -88,12 +87,10 @@ public slots:
 	//void fontChangeSlot(osgText::Font* font, int size);
 	//void sizeChangeSlot(PrimType type, int size);
 	//osgEarth::ModelLayer* changeLayerStyle(
-	//	std::string path, QString gemtype, FileType addType, std::string iconPath, float layerHeight);
+	//	std::string path, const QString& gemtype, FileType addType, std::string iconPath, float layerHeight);
 	//void changeLayerStyleSlot();
 
 	// Data manipulation
-	void setCenterNode(osg::Node* node);
-	void activateNode(QTreeWidgetItem* item, int column);
 	void showDataTreeContextMenu(const QPoint &pos);
 	void doubleClickTreeSlot(QTreeWidgetItem* item, int column);
 
@@ -113,7 +110,7 @@ signals:
 	void loadingDone();
 	void requestContextMenu(QMenu*, QTreeWidgetItem*);
 	void resetCamera();
-	void showDataAttributes(QString);
+	void showDataAttributes(const QString&);
 
 private:
 	void setupUi();
